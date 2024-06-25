@@ -1,3 +1,7 @@
+# Copyright (c) ONNX Project Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
 name: WindowsRelease
 
 on:
@@ -13,6 +17,10 @@ on:
 permissions:  # set top-level default permissions as security best practice
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  cancel-in-progress: true
+
 jobs:
   build:
     if: github.event_name != 'pull_request' || startsWith( github.base_ref, 'rel-') || contains( github.event.pull_request.labels.*.name, 'run release CIs')
@@ -26,16 +34,10 @@ jobs:
       uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       with:
          path: ./onnx
-    - name: Checkout ONNX submodules
-      shell: bash
-      run: |
-         cd onnx
-         auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-         git submodule sync --recursive
-         git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+         submodule: 'recursive'
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
+      uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
       with:
         python-version: ${{ matrix.python-version }}
         architecture: ${{ matrix.architecture }}
@@ -54,6 +56,7 @@ jobs:
           sed -i '' '/-r requirements-reference.txt/d' requirements-release.txt
         }
         python -m pip install -q -r requirements-release.txt
+        python -m pip install cmake
 
     - name: Build ONNX wheel
       run: |
@@ -96,7 +99,8 @@ jobs:
       if: ${{ always() }}
       run: |
         cd onnx
-        python -m pip uninstall -y numpy onnx && python -m pip install numpy
+        python -m pip uninstall -y numpy onnx
+        python -m pip install numpy
         Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
         pytest
 
@@ -104,7 +108,8 @@ jobs:
       if: ${{ always() }}
       run: |
         cd onnx
-        python -m pip uninstall -y protobuf onnx && python -m pip install protobuf
+        python -m pip uninstall -y protobuf onnx
+        python -m pip install protobuf
         Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
         pytest
 
@@ -112,7 +117,8 @@ jobs:
       if: ${{ always() }}
       run: |
         cd onnx
-        python -m pip uninstall -y protobuf numpy onnx && python -m pip install -r requirements-min.txt
+        python -m pip uninstall -y protobuf numpy onnx
+        python -m pip install -r requirements-min.txt
         Get-ChildItem -Path dist/*.whl | foreach {python -m pip install --upgrade $_.fullname}
         pytest
 
@@ -120,8 +126,9 @@ jobs:
       if: matrix.python-version != '3.12'
       run: |
         cd onnx
-        python -m pip uninstall -y protobuf numpy && python -m pip install -q -r requirements-release.txt
-        python -m pip install -q onnxruntime
+        python -m pip uninstall -y protobuf numpy
+        python -m pip install -q -r requirements-release.txt
+        python -m pip install -q onnxruntime==1.17.3
         $Env:ORT_MAX_IR_SUPPORTED_VERSION=9
         $Env:ORT_MAX_ML_OPSET_SUPPORTED_VERSION=3
         $Env:ORT_MAX_ONNX_OPSET_SUPPORTED_VERSION=20
